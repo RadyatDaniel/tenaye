@@ -1,11 +1,12 @@
 services:
   - type: web
-    name: tenaye-health-backend
+    name: tenaye-backend
     env: node
     region: oregon
     plan: free
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && npm start
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/server.js
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -13,18 +14,18 @@ services:
       - key: PORT
         value: 3001
       - key: MONGO_URI
-        sync: false
+        value: mongodb+srv://radyatdani_db_user:AEjmmJCliXJM6G5N@cluster0.lrinadv.mongodb.net/tenaye_health?retryWrites=true&w=majority&appName=Cluster0
       - key: JWT_SECRET
-        sync: false
+        value: 2448b22915a1cbd4e91ccfc8c9e0299fead76f55d5f254b50f25d51a50a85ad5
       - key: CORS_ORIGIN
         sync: false
       - key: CHAPA_SECRET_KEY
-        sync: false
+        value: CHASECK_TEST-dz3dRdVvm5n9Kd66cL7A5q8qTZEfrART
       - key: CHAPA_TEST_MODE
-        value: false
+        value: "true"
       - key: STREAM_API_KEY
-        sync: false
+        value: jy4cdzbaxp7f
       - key: STREAM_API_SECRET
-        sync: false
+        value: vzp4rex9s4bhksttk9x95ydu5kv6jafc3ekajtmq5bqaw2dpytpkr2nfzv8hejy6
       - key: CHAPA_WEBHOOK_SECRET
-        sync: false
+        value: ""
