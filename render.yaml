@@ -18,7 +18,7 @@ services:
       - key: JWT_SECRET
         value: 2448b22915a1cbd4e91ccfc8c9e0299fead76f55d5f254b50f25d51a50a85ad5
       - key: CORS_ORIGIN
-        sync: false
+        value: https://frontend-eight-theta-34.vercel.app
       - key: CHAPA_SECRET_KEY
         value: CHASECK_TEST-dz3dRdVvm5n9Kd66cL7A5q8qTZEfrART
       - key: CHAPA_TEST_MODE
