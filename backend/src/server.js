@@ -97,9 +97,10 @@ app.use("/api/messages", messageRoutes);
 
 app.get("/health", (_, res) => {
   const dbState = mongoose.connection.readyState;
-  // 1 = connected, 2 = connecting — both are healthy during startup
-  if (dbState === 1) return res.status(200).json({ status: "ok", db: "connected" });
-  if (dbState === 2) return res.status(200).json({ status: "ok", db: "connecting" });
+  // 1 = connected, 2 = connecting
+  if (dbState === 1) {
+    return res.status(200).json({ status: "ok", db: "connected" });
+  }
   return res.status(503).json({ status: "degraded", db: "disconnected" });
 });
 
