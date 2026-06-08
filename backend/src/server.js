@@ -95,27 +95,6 @@ app.use("/api/nutrition", nutritionRoutes);
 app.use("/api/group-chat", groupChatRoutes);
 app.use("/api/messages", messageRoutes);
 
-// TEMPORARY: one-time admin seed endpoint — will be removed after use
-app.post("/api/seed-admin", async (req, res) => {
-  if (req.headers["x-seed-token"] !== "tenaye-seed-2026") return res.status(403).json({ error: "forbidden" });
-  try {
-    const bcrypt = await import("bcryptjs");
-    const User = (await import("./models/User.js")).default;
-    const email = "admin@tenayehealth.com";
-    const password = "Admin@1234";
-    const hash = await bcrypt.default.hash(password, 10);
-    const existing = await User.findOne({ email });
-    if (existing) {
-      await User.updateOne({ email }, { $set: { role: "admin", password: hash, full_name: "System Admin" } });
-    } else {
-      await User.create({ full_name: "System Admin", email, password: hash, role: "admin" });
-    }
-    res.json({ success: true, email, password });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 app.get("/health", (_, res) => {
   const dbState = mongoose.connection.readyState;
   // 1 = connected, 2 = connecting — both are healthy during startup
