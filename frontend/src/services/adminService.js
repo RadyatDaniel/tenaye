@@ -61,6 +61,19 @@ export const getRecentActivity = async () => {
 
 // ─── USERS ────────────────────────────────────────────────────────────────────
 
+// export const getPatients = async () => {
+//   try {
+//     const response = await fetch(`${API_BASE_URL}/api/admin/users`, {
+//       headers: getAuthHeaders(),
+//     });
+//     if (!response.ok) throw new Error(await readResponseError(response));
+//     const data = await response.json();
+//     return { data: data.filter((u) => u.role === "patient"), error: null };
+//   } catch (err) {
+    
+//     return { data: null, error: err.message };
+//   }
+// };
 export const getPatients = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/admin/users`, {
@@ -68,9 +81,23 @@ export const getPatients = async () => {
     });
     if (!response.ok) throw new Error(await readResponseError(response));
     const data = await response.json();
-    return { data: data.filter((u) => u.role === "patient"), error: null };
+    return {
+      data: data
+        .filter((u) => u.role === "patient")
+        .map((u) => ({
+          id: u._id,
+          name: u.full_name,
+          email: u.email,
+          age: u.age ?? "—",
+          gender: u.gender ?? "—",
+          status: u.is_blocked ? "blocked" : "active",
+          lastActive: u.updatedAt
+            ? new Date(u.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+            : "N/A",
+        })),
+      error: null,
+    };
   } catch (err) {
-    
     return { data: null, error: err.message };
   }
 };
@@ -87,23 +114,7 @@ export const blockUser = async (userId) => {
     if (!response.ok) throw new Error(await readResponseError(response));
     return { error: null };
   } catch (err) {
-    //return { error: err.message };
-    return {
-  data: data
-    .filter((u) => u.role === "patient")
-    .map((u) => ({
-      id: u._id,
-      name: u.full_name,
-      email: u.email,
-      age: u.age ?? "—",
-      gender: u.gender ?? "—",
-      status: u.is_blocked ? "blocked" : "active",
-      lastActive: u.updatedAt
-        ? new Date(u.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-        : "N/A",
-    })),
-  error: null,
-};
+    return { error: err.message };
   }
 };
 
