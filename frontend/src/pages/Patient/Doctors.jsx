@@ -20,6 +20,7 @@ const specialties = [
   "Pediatrics",
   "Orthopedics",
   "Nutritionist",
+  "Gym Trainer",
 ];
 
 const statusColors = {
