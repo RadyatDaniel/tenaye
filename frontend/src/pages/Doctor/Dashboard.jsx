@@ -347,13 +347,63 @@ export default function DoctorDashboard() {
   };
 
   useEffect(() => {
-    setTimeout(() => {
-      setStats(mockDoctorStats);
-      setAppointments(mockDoctorAppointments.filter((a) => a.status === "upcoming").slice(0, 3));
-      setActivity(mockActivity);
-      setAlerts(mockVitalAlerts.filter((a) => !a.acknowledged));
-      setLoading(false);
-    }, 400);
+    const fetchDashboardData = async () => {
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+        const token = localStorage.getItem("token");
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const [apptRes, patientRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/appointments/doctor`, { headers }),
+          fetch(`${API_BASE_URL}/api/appointments/doctor/patients`, { headers }),
+        ]);
+
+        const allAppts = apptRes.ok ? await apptRes.json() : [];
+        const patients = patientRes.ok ? await patientRes.json() : [];
+
+        const todayStr = new Date().toDateString();
+        const appointmentsToday = allAppts.filter(
+          (a) => new Date(a.scheduled_at).toDateString() === todayStr
+        ).length;
+
+        setStats({
+          totalPatients: Array.isArray(patients) ? patients.length : mockDoctorStats.totalPatients,
+          appointmentsToday,
+          pendingLabOrders: mockDoctorStats.pendingLabOrders,
+          monthlyEarnings: mockDoctorStats.monthlyEarnings,
+        });
+
+        const upcoming = allAppts
+          .filter((a) => a.status === "upcoming")
+          .slice(0, 3)
+          .map((a) => {
+            const d = new Date(a.scheduled_at);
+            return {
+              id: a._id,
+              date: d.toISOString().split("T")[0],
+              time: d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              patient: a.patient?.full_name || "Patient",
+              type: "Video Call",
+              duration: "30 min",
+              status: a.status,
+            };
+          });
+
+        setAppointments(upcoming);
+        setActivity(mockActivity);
+        setAlerts(mockVitalAlerts.filter((a) => !a.acknowledged));
+      } catch (err) {
+        console.error("Dashboard fetch error:", err);
+        setStats(mockDoctorStats);
+        setAppointments(mockDoctorAppointments.filter((a) => a.status === "upcoming").slice(0, 3));
+        setActivity(mockActivity);
+        setAlerts(mockVitalAlerts.filter((a) => !a.acknowledged));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
   }, []);
 
   useEffect(() => {
