@@ -40,36 +40,65 @@ export default function DoctorChat() {
   const [loadingConvos, setLoadingConvos] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [sending, setSending] = useState(false);
+  const [convoError, setConvoError] = useState("");
+  const [msgError, setMsgError] = useState("");
   const [showList, setShowList] = useState(true);
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => {
+  const fetchConversations = () => {
+    setConvoError("");
     fetch(`${API}/api/messages/conversations`, { headers: authHeaders() })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Error ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         setConversations(Array.isArray(data) ? data : []);
         setLoadingConvos(false);
       })
-      .catch(() => setLoadingConvos(false));
+      .catch((err) => {
+        setConvoError(err.message || "Failed to load conversations.");
+        setLoadingConvos(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchConversations();
 
     const socketUrl = import.meta.env.VITE_SOCKET_URL || "http://localhost:3001";
     socketRef.current = window.io(socketUrl);
     const uid = myUserId();
 
     socketRef.current.on(`dm:${uid}`, (msg) => {
+      // Normalize sender to always be a string ID
+      const senderId = msg.sender?._id ?? msg.sender;
+
       setActiveConvo((current) => {
-        if (current && msg.sender === current.partnerId) {
-          setMessages((prev) => [...prev, msg]);
+        if (current && senderId === current.partnerId) {
+          // Message belongs to the open thread — append, prevent duplicates
+          setMessages((prev) => {
+            if (prev.some((m) => m._id === msg._id)) return prev;
+            return [...prev, msg];
+          });
         } else {
-          setConversations((prev) =>
-            prev.map((c) =>
-              c.partnerId === msg.sender
+          setConversations((prev) => {
+            const exists = prev.some((c) => c.partnerId === senderId);
+            if (!exists) {
+              // New conversation from unknown patient — refetch the list
+              fetch(`${API}/api/messages/conversations`, { headers: authHeaders() })
+                .then((r) => r.json())
+                .then((data) => { if (Array.isArray(data)) setConversations(data); })
+                .catch(() => {});
+              return prev;
+            }
+            return prev.map((c) =>
+              c.partnerId === senderId
                 ? { ...c, unread: (c.unread || 0) + 1, lastMessage: msg.content, lastAt: msg.createdAt }
                 : c,
-            ),
-          );
+            );
+          });
         }
         return current;
       });
@@ -89,9 +118,13 @@ export default function DoctorChat() {
     setShowList(false);
     setLoadingMsgs(true);
     setMessages([]);
+    setMsgError("");
 
     fetch(`${API}/api/messages/${convo.partnerId}`, { headers: authHeaders() })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Error ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         setMessages(Array.isArray(data) ? data : []);
         setLoadingMsgs(false);
@@ -99,7 +132,10 @@ export default function DoctorChat() {
           prev.map((c) => (c.partnerId === convo.partnerId ? { ...c, unread: 0 } : c)),
         );
       })
-      .catch(() => setLoadingMsgs(false));
+      .catch((err) => {
+        setMsgError(err.message || "Failed to load messages.");
+        setLoadingMsgs(false);
+      });
   };
 
   const handleSend = async () => {
@@ -124,6 +160,10 @@ export default function DoctorChat() {
         headers: authHeaders(),
         body: JSON.stringify({ content: text }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || `Failed to send (${res.status})`);
+      }
       const saved = await res.json();
 
       setMessages((prev) =>
@@ -180,6 +220,17 @@ export default function DoctorChat() {
             {loadingConvos ? (
               <div className="flex items-center justify-center h-32">
                 <div className="w-6 h-6 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : convoError ? (
+              <div className="p-6 text-center text-gray-400">
+                <span className="material-symbols-outlined text-4xl mb-2 text-red-300">error</span>
+                <p className="text-sm text-red-500">{convoError}</p>
+                <button
+                  onClick={() => { setLoadingConvos(true); fetchConversations(); }}
+                  className="mt-3 px-4 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-full"
+                >
+                  Retry
+                </button>
               </div>
             ) : conversations.length === 0 ? (
               <div className="p-6 text-center text-gray-400">
@@ -260,6 +311,17 @@ export default function DoctorChat() {
                 {loadingMsgs ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="w-6 h-6 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : msgError ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
+                    <span className="material-symbols-outlined text-4xl text-red-300">error</span>
+                    <p className="text-sm text-red-500">{msgError}</p>
+                    <button
+                      onClick={() => openConversation(activeConvo)}
+                      className="px-4 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-full"
+                    >
+                      Retry
+                    </button>
                   </div>
                 ) : messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full text-gray-400 text-sm">
