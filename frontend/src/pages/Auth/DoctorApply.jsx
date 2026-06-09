@@ -17,6 +17,7 @@ const specialties = [
   "ENT",
   "Urology",
   "Nephrology",
+  "Nutritionist",
 ];
 
 export default function DoctorApply() {
