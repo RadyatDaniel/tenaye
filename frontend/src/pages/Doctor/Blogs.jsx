@@ -1,40 +1,7 @@
 import { useState, useEffect } from "react";
 import DoctorLayout from "./components/DoctorLayout";
 
-const mockDoctorBlogs = [
-  {
-    id: "1",
-    title: "Managing Hypertension in Young Adults",
-    category: "Cardiology",
-    date: "2025-04-20",
-    status: "published",
-    likes: 142,
-  },
-  {
-    id: "2",
-    title: "Understanding Type 2 Diabetes: A Patient Guide",
-    category: "Diabetes",
-    date: "2025-04-15",
-    status: "published",
-    likes: 98,
-  },
-  {
-    id: "3",
-    title: "Heart Failure: Early Warning Signs",
-    category: "Cardiology",
-    date: "2025-04-10",
-    status: "pending",
-    likes: 0,
-  },
-  {
-    id: "4",
-    title: "Lifestyle Changes for Better Cardiovascular Health",
-    category: "General",
-    date: "2025-04-05",
-    status: "draft",
-    likes: 0,
-  },
-];
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 const statusColors = {
   published: "bg-emerald-100 text-emerald-700",
@@ -50,11 +17,7 @@ function Toast({ message, type, onClose }) {
       ${type === "success" ? "bg-emerald-600" : type === "error" ? "bg-red-600" : "bg-[#0D7377]"}`}
     >
       <span className="material-symbols-outlined text-lg">
-        {type === "success"
-          ? "check_circle"
-          : type === "error"
-            ? "cancel"
-            : "article"}
+        {type === "success" ? "check_circle" : type === "error" ? "cancel" : "article"}
       </span>
       {message}
       <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100">
@@ -64,28 +27,45 @@ function Toast({ message, type, onClose }) {
   );
 }
 
-function CreatePostModal({ onClose, onPublish }) {
-  const [form, setForm] = useState({
-    title: "",
-    category: "General",
-    content: "",
-    status: "published",
-  });
+function BlogFormModal({ initial, onClose, onSave }) {
+  const [form, setForm] = useState(
+    initial || { title: "", category: "General", content: "", status: "published" }
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const update = (k, v) => setForm((prev) => ({ ...prev, [k]: v }));
+
+  const handleSave = async () => {
+    if (!form.title.trim() || !form.content.trim()) {
+      setError("Title and content are required.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onSave(form);
+    } catch (err) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-gray-50">
-          <h3 className="text-lg font-bold text-gray-800">Write New Post</h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
+          <h3 className="text-lg font-bold text-gray-800">
+            {initial ? "Edit Post" : "Write New Post"}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
         <div className="p-6 space-y-4">
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-xl">{error}</p>
+          )}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5 block">
               Title
@@ -106,17 +86,9 @@ function CreatePostModal({ onClose, onPublish }) {
               value={form.category}
               onChange={(e) => update("category", e.target.value)}
             >
-              {[
-                "General",
-                "Cardiology",
-                "Diabetes",
-                "Neurology",
-                "Technology",
-                "Nutrition",
-                "Mental Health",
-              ].map((c) => (
-                <option key={c}>{c}</option>
-              ))}
+              {["General", "Cardiology", "Diabetes", "Neurology", "Technology", "Nutrition", "Mental Health"].map(
+                (c) => <option key={c}>{c}</option>
+              )}
             </select>
           </div>
           <div>
@@ -158,11 +130,11 @@ function CreatePostModal({ onClose, onPublish }) {
               Cancel
             </button>
             <button
-              onClick={() => onPublish(form)}
-              disabled={!form.title.trim() || !form.content.trim()}
-              className="flex-1 px-4 py-3 bg-[#0D7377] text-white rounded-xl font-bold text-sm hover:bg-purple-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 px-4 py-3 bg-[#0D7377] text-white rounded-xl font-bold text-sm hover:bg-teal-800 transition-colors disabled:opacity-50"
             >
-              {form.status === "published" ? "Publish" : "Save Draft"}
+              {saving ? "Saving..." : form.status === "published" ? "Publish" : "Save Draft"}
             </button>
           </div>
         </div>
@@ -174,16 +146,54 @@ function CreatePostModal({ onClose, onPublish }) {
 export default function DoctorBlogs() {
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingBlog, setEditingBlog] = useState(null);
+  const [deletingBlog, setDeletingBlog] = useState(null);
   const [toast, setToast] = useState(null);
 
-  useEffect(() => {
-    setTimeout(() => {
-      setBlogs(mockDoctorBlogs);
+  const getHeaders = () => {
+    const token = localStorage.getItem("token");
+    return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+  };
+
+  const showToast = (message, type = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const fetchBlogs = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/blogs/mine`, { headers: getHeaders() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setFetchError(err.message || `Error ${res.status}: failed to load your blogs.`);
+        return;
+      }
+      setFetchError("");
+      const data = await res.json();
+      setBlogs(
+        data.map((b) => ({
+          id: b._id,
+          title: b.title,
+          category: b.category || "General",
+          content: b.content,
+          date: b.published_at
+            ? new Date(b.published_at).toISOString().split("T")[0]
+            : new Date(b.createdAt).toISOString().split("T")[0],
+          status: b.status || "published",
+          likes: b.likes?.length || 0,
+        }))
+      );
+    } catch (err) {
+      setFetchError("Network error — could not reach the server.");
+    } finally {
       setLoading(false);
-    }, 400);
-  }, []);
+    }
+  };
+
+  useEffect(() => { fetchBlogs(); }, []);
 
   if (loading)
     return (
@@ -194,59 +204,129 @@ export default function DoctorBlogs() {
       </DoctorLayout>
     );
 
-  const filtered = blogs.filter(
-    (b) => activeTab === "all" || b.status === activeTab,
-  );
-
-  const showToast = (message, type = "success") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3500);
-  };
-
-  const handlePublish = (form) => {
-    const newPost = {
-      id: String(Date.now()),
-      title: form.title,
-      category: form.category,
-      date: new Date().toISOString().split("T")[0],
-      status: form.status,
-      likes: 0,
-    };
-    setBlogs((prev) => [newPost, ...prev]);
-    setShowCreateModal(false);
-    showToast(
-      `"${form.title}" ${form.status === "published" ? "published" : "saved as draft"}.`,
-      "success",
+  if (fetchError)
+    return (
+      <DoctorLayout title="My Blogs">
+        <div className="flex flex-col items-center justify-center h-64 gap-4">
+          <span className="material-symbols-outlined text-5xl text-red-300">error</span>
+          <p className="text-red-500 font-semibold text-center">{fetchError}</p>
+          <button
+            onClick={() => { setLoading(true); setFetchError(""); fetchBlogs(); }}
+            className="px-5 py-2 bg-[#0D7377] text-white rounded-xl font-bold text-sm hover:bg-teal-800 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </DoctorLayout>
     );
+
+  const filtered = blogs.filter((b) => activeTab === "all" || b.status === activeTab);
+
+  const handleCreate = async (form) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/blogs`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ title: form.title, content: form.content, category: form.category, status: form.status }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to create blog");
+      }
+      setShowCreateModal(false);
+      showToast(`"${form.title}" ${form.status === "published" ? "published" : "saved as draft"}.`);
+      fetchBlogs();
+    } catch (err) {
+      showToast(err.message, "error");
+      throw err;
+    }
   };
 
-  const handleDelete = (blog) => {
-    setBlogs((prev) => prev.filter((b) => b.id !== blog.id));
-    showToast(`"${blog.title}" deleted.`, "error");
+  const handleEdit = async (form) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/blogs/${editingBlog.id}`, {
+        method: "PUT",
+        headers: getHeaders(),
+        body: JSON.stringify({ title: form.title, content: form.content, category: form.category, status: form.status }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to update blog");
+      }
+      setEditingBlog(null);
+      showToast(`"${form.title}" updated.`);
+      fetchBlogs();
+    } catch (err) {
+      showToast(err.message, "error");
+      throw err;
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    const blog = deletingBlog;
+    setDeletingBlog(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/blogs/${blog.id}`, {
+        method: "DELETE",
+        headers: getHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to delete blog");
+      }
+      showToast(`"${blog.title}" deleted.`, "error");
+      fetchBlogs();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
   };
 
   return (
     <DoctorLayout title="My Blogs">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      {showCreateModal && (
+        <BlogFormModal onClose={() => setShowCreateModal(false)} onSave={handleCreate} />
+      )}
+
+      {editingBlog && (
+        <BlogFormModal
+          initial={editingBlog}
+          onClose={() => setEditingBlog(null)}
+          onSave={handleEdit}
         />
       )}
-      {showCreateModal && (
-        <CreatePostModal
-          onClose={() => setShowCreateModal(false)}
-          onPublish={handlePublish}
-        />
+
+      {deletingBlog && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <span className="material-symbols-outlined text-4xl text-red-400 mb-3 block">delete</span>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">Delete Post?</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              "{deletingBlog.title}" will be permanently removed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeletingBlog(null)}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-semibold text-sm hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
           <h2 className="text-3xl font-black text-[#0D7377]">My Blogs</h2>
-          <p className="text-gray-400 mt-1">
-            Share your medical knowledge with patients
-          </p>
+          <p className="text-gray-400 mt-1">Share your medical knowledge with patients</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -257,53 +337,30 @@ export default function DoctorBlogs() {
         </button>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-6 mb-8">
         {[
-          {
-            label: "Published",
-            value: blogs.filter((b) => b.status === "published").length,
-            color: "text-emerald-600",
-            bg: "bg-white",
-          },
-          {
-            label: "Pending Review",
-            value: blogs.filter((b) => b.status === "pending").length,
-            color: "text-amber-600",
-            bg: "bg-amber-50",
-          },
-          {
-            label: "Total Likes",
-            value: blogs.reduce((sum, b) => sum + b.likes, 0),
-            color: "text-[#0D7377]",
-            bg: "bg-white",
-          },
+          { label: "Published", value: blogs.filter((b) => b.status === "published").length, color: "text-emerald-600", bg: "bg-white" },
+          { label: "Drafts", value: blogs.filter((b) => b.status === "draft").length, color: "text-amber-600", bg: "bg-amber-50" },
+          { label: "Total Likes", value: blogs.reduce((sum, b) => sum + b.likes, 0), color: "text-[#0D7377]", bg: "bg-white" },
         ].map((s) => (
           <div key={s.label} className={`${s.bg} p-6 rounded-2xl shadow-sm`}>
             <p className={`text-3xl font-black ${s.color}`}>{s.value}</p>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-1">
-              {s.label}
-            </p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-1">{s.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Blog Cards */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="p-4 border-b border-gray-50 flex gap-2 flex-wrap">
-          {["all", "published", "pending", "draft"].map((tab) => (
+          {["all", "published", "draft"].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-full text-sm font-bold capitalize transition-colors ${
-                activeTab === tab
-                  ? "bg-[#0D7377] text-white"
-                  : "text-gray-400 hover:bg-[#f0fafa]"
+                activeTab === tab ? "bg-[#0D7377] text-white" : "text-gray-400 hover:bg-[#f0fafa]"
               }`}
             >
-              {tab === "all"
-                ? "All Posts"
-                : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === "all" ? "All Posts" : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -311,62 +368,40 @@ export default function DoctorBlogs() {
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {filtered.length === 0 ? (
             <div className="col-span-3 py-16 text-center">
-              <span className="material-symbols-outlined text-5xl text-gray-200 block mb-3">
-                article
-              </span>
-              <p className="text-gray-400 font-medium">
-                No posts in this category.
-              </p>
+              <span className="material-symbols-outlined text-5xl text-gray-200 block mb-3">article</span>
+              <p className="text-gray-400 font-medium">No posts in this category.</p>
             </div>
           ) : (
             filtered.map((blog) => (
-              <div
-                key={blog.id}
-                className="bg-[#f0fafa] rounded-2xl p-5 flex flex-col gap-3"
-              >
+              <div key={blog.id} className="bg-[#f0fafa] rounded-2xl p-5 flex flex-col gap-3">
                 <div className="w-full h-32 bg-gradient-to-br from-[#0D7377]/20 to-[#600f72]/10 rounded-xl flex items-center justify-center">
-                  <span className="material-symbols-outlined text-4xl text-[#0D7377]/30">
-                    article
-                  </span>
+                  <span className="material-symbols-outlined text-4xl text-[#0D7377]/30">article</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="px-2 py-0.5 bg-white text-[#0D7377] text-xs font-bold rounded-full">
-                    {blog.category}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-xs font-bold ${statusColors[blog.status]}`}
-                  >
-                    {blog.status}
-                  </span>
+                  <span className="px-2 py-0.5 bg-white text-[#0D7377] text-xs font-bold rounded-full">{blog.category}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${statusColors[blog.status]}`}>{blog.status}</span>
                 </div>
-                <h4 className="font-bold text-gray-800 text-sm leading-snug">
-                  {blog.title}
-                </h4>
+                <h4 className="font-bold text-gray-800 text-sm leading-snug">{blog.title}</h4>
                 <p className="text-xs text-gray-400">{blog.date}</p>
                 <div className="flex items-center justify-between mt-auto pt-2 border-t border-white">
                   <div className="flex items-center gap-1 text-xs text-gray-400">
-                    <span className="material-symbols-outlined text-sm">
-                      favorite
-                    </span>
+                    <span className="material-symbols-outlined text-sm">favorite</span>
                     {blog.likes.toLocaleString()}
                   </div>
                   <div className="flex gap-1">
                     <button
+                      onClick={() => setEditingBlog(blog)}
                       className="p-1.5 text-gray-400 hover:bg-white rounded-lg transition-colors"
                       title="Edit"
                     >
-                      <span className="material-symbols-outlined text-lg">
-                        edit
-                      </span>
+                      <span className="material-symbols-outlined text-lg">edit</span>
                     </button>
                     <button
-                      onClick={() => handleDelete(blog)}
+                      onClick={() => setDeletingBlog(blog)}
                       className="p-1.5 text-red-500 hover:bg-white rounded-lg transition-colors"
                       title="Delete"
                     >
-                      <span className="material-symbols-outlined text-lg">
-                        delete
-                      </span>
+                      <span className="material-symbols-outlined text-lg">delete</span>
                     </button>
                   </div>
                 </div>

@@ -2,9 +2,20 @@ import Blog from "../models/Blog.js";
 
 export const getBlogs = async (req, res) => {
   try {
-    const blogs = await Blog.find()
+    const blogs = await Blog.find({ $or: [{ status: "published" }, { status: { $exists: false } }] })
       .populate("author", "full_name avatar_url")
       .sort({ published_at: -1 });
+    res.json(blogs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const getMyBlogs = async (req, res) => {
+  try {
+    const blogs = await Blog.find({ author: req.user._id })
+      .populate("author", "full_name avatar_url")
+      .sort({ createdAt: -1 });
     res.json(blogs);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -43,10 +54,14 @@ export const updateBlog = async (req, res) => {
       return res.status(403).json({ message: "Not authorized to update this blog" });
     }
     
+    const update = { ...req.body };
+    if (req.body.status === "published" && blog.status !== "published") {
+      update.published_at = new Date();
+    }
     const updated = await Blog.findByIdAndUpdate(
       req.params.id,
-      { ...req.body },
-      { new: true }
+      { $set: update },
+      { new: true, runValidators: true }
     );
     res.json(updated);
   } catch (err) {

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getBlogs,
+  getMyBlogs,
   getBlogById,
   createBlog,
   updateBlog,
@@ -12,8 +13,9 @@ import { protect } from "../middleware/authMiddleware.js";
 const router = Router();
 // Public routes - anyone can view blogs
 router.get("/", getBlogs);
-router.get("/:id", getBlogById);
 // Protected routes - only logged in users
+router.get("/mine", protect, getMyBlogs);
+router.get("/:id", getBlogById);
 router.post("/", protect, createBlog);
 router.put("/:id", protect, updateBlog);
 router.delete("/:id", protect, deleteBlog);

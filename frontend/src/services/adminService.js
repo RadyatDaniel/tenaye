@@ -408,7 +408,22 @@ export const getAllBlogs = async () => {
  * await supabase.from("blogs").update({ status: "published", published_at: new Date() }).eq("id", blogId)
  */
 export const approveBlog = async (blogId) => {
-  return { error: null };
+  try {
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${API_BASE_URL}/api/blogs/${blogId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: "published" }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to approve blog");
+    }
+    const data = await response.json();
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error: error.message };
+  }
 };
 
 /**
@@ -419,7 +434,22 @@ export const approveBlog = async (blogId) => {
  * // Trigger Edge Function to notify author
  */
 export const rejectBlog = async (blogId, reason) => {
-  return { error: null };
+  try {
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${API_BASE_URL}/api/blogs/${blogId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: "flagged", rejection_reason: reason }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Failed to reject blog");
+    }
+    const data = await response.json();
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error: error.message };
+  }
 };
 
 /**
